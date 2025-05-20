@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Monitoring Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>Monitoring Dashboard</h1>
+<canvas id="pnlChart" width="400" height="200"></canvas>
+<script>
+const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss':'ws'}://${location.host}/ws/metrics`);
+const pnlData = [];
+const labels = [];
+const ctx = document.getElementById('pnlChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {labels: labels, datasets:[{label:'PnL', data:pnlData}]}
+});
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    labels.push(new Date(data.timestamp).toLocaleTimeString());
+    pnlData.push(data.pnl);
+    if (labels.length > 20) {labels.shift(); pnlData.shift();}
+    chart.update();
+};
+</script>
+</body>
+</html>
