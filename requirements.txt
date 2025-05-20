@@ -1,0 +1,9 @@
+web3
+fastapi
+flask
+pytest
+pydantic
+requests
+python-dotenv
+loguru
+uvicorn
