@@ -1,4 +1,10 @@
 import json
+import os
+import sys
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 import monitoring_dashboard as md
 
