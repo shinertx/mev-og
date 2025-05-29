@@ -1,1 +1,107 @@
+# FILE: .github/workflows/ai_pull_request_generator.yaml
+# PURPOSE: Automates the creation of a Pull Request containing AI-generated code.
+# ROLE: AI CTO, Infra Engineer.
+# INTEGRATION_POINTS: Triggered manually (workflow_dispatch) with code payload.
+#                      Integrates with CI pipeline for validation.
+# CONTEXT: Implements the "Automated Promotion & Meta-Governance" mandate from PROJECT_BIBLE.md,
+#          reducing manual developer friction and streamlining code delivery.
+# MANDATES ENFORCED:
+# - Infra as Code/Portability
+# - AI/LLM Integration Points (consumes AI-generated content)
+# - Patch/PR-Ready Output (creates PRs)
+# - Continuous Mutation/Pruning (foundation for automated updates)
+# - Automated Promotion & Meta-Governance (auto-merges on success)
 
+name: AI Pull Request Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: 'New branch name (e.g., ai-feature-flash-loans)'
+        required: true
+        default: 'ai-generated-feature'
+      pr_title:
+        description: 'Pull Request Title'
+        required: true
+        default: 'AI-Generated Feature Update'
+      pr_body:
+        description: 'Pull Request Description (AI Summary)'
+        required: true
+        default: 'Automatically generated code update from MEV-OG AI CTO.'
+      files_payload_json:
+        description: 'JSON array string of {"path": "relative/path/to/file.py", "content_b64": "base64encodedContent"}'
+        required: true # Base64 encoding helps with multi-line content and special chars
+
+jobs:
+  generate_and_pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # To write files and create branches
+      pull-requests: write # To create pull requests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all history for branch creation
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create new branch
+        id: create_branch
+        run: |
+          git checkout -b ${{ github.event.inputs.branch_name }}
+          echo "Created branch ${{ github.event.inputs.branch_name }}"
+          
+      - name: Decode and write files
+        env:
+          FILES_JSON: ${{ github.event.inputs.files_payload_json }}
+        run: |
+          echo "Decoding and writing files..."
+          # Install jq for JSON parsing
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # Decode the JSON payload
+          DECODED_FILES=$(echo "$FILES_JSON" | jq -c '.[]')
+
+          # Loop through each file object and write content
+          for file_obj in $DECODED_FILES; do
+              FILE_PATH=$(echo "$file_obj" | jq -r '.path')
+              CONTENT_B64=$(echo "$file_obj" | jq -r '.content_b64')
+              # Ensure parent directory exists
+              mkdir -p "$(dirname "$FILE_PATH")"
+              echo "$CONTENT_B64" | base64 --decode > "$FILE_PATH"
+              echo "Wrote: $FILE_PATH"
+              git add "$FILE_PATH"
+          done
+          echo "Files written successfully."
+      
+      - name: Commit changes
+        run: |
+          git commit -m "${{ github.event.inputs.pr_title }}" || echo "No changes to commit (or files already committed)."
+
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # Use default GITHUB_TOKEN
+          commit-message: ${{ github.event.inputs.pr_title }}
+          title: ${{ github.event.inputs.pr_title }}
+          body: ${{ github.event.inputs.pr_body }}
+          base: main
+          head: ${{ github.event.inputs.branch_name }}
+          draft: false # Set to true if you want draft PRs
+
+      - name: Enable auto-merge for the PR (if configured via branch protection and CI passes)
+        if: steps.cpr.outputs.pull-request-number # Check if a PR was actually created
+        run: |
+          PR_NUMBER=${{ steps.cpr.outputs.pull-request-number }}
+          echo "Pull Request #$PR_NUMBER created. Enabling auto-merge."
+          gh pr merge "$PR_NUMBER" --auto --squash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Install GitHub CLI if not available
+        uses: cli/cli@v2
